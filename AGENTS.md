@@ -170,3 +170,22 @@ The initial UI rendered by the component on the client must be identical to the 
 - Login and Register use a separate authentication layout.
 - Use the official dark theme on every page, including Login and Register. Set `data-theme="dark"` on the HTML template; do not redefine theme colors.
 - Navigation actions outside the sidebar use the official Button Link variant, never an unstyled browser link.
+
+# Development database and compatibility
+
+- This application is not in production. There is no real or historical data to preserve.
+- Never keep legacy code, compatibility shims, old schema support, or fallback implementations.
+- Never create database migrations or use a migration runner, including SQLx migrations.
+- `infra/schema.sql` is the single source of truth for creating the entire current schema.
+- Edit that schema directly. When a schema change requires rebuilding the database, use `make reset` and discard all development data.
+- Keep the project Makefile at the repository root. It may contain commands for the project in general.
+- Keep infrastructure commands independent from the app. `make up` starts only Docker Compose services, never the backend or frontend.
+- Use Dioxus 0.7 server functions for the API and SQLx only on the server. Authenticate protected endpoints on the server, not only in the UI.
+
+# Type safety
+
+- Always aim for the strongest practical type safety throughout the application, including database access, API payloads, state, and domain models.
+- All application SQL queries must use SQLx's compile-time checked macros: `query!`, `query_as!`, or `query_scalar!` (and their file variants).
+- Never use unchecked macros or runtime-only `sqlx::query`, `query_as`, or `query_scalar` for application queries. Do not bypass parameter, column type, or nullability checks.
+- Use explicit structs and enums for meaningful domain concepts. Avoid stringly typed data, untyped JSON, and unnecessary casts or unwraps.
+- Check SQLx queries directly against the running PostgreSQL database during compilation using `DATABASE_URL` from `.env`. Do not use offline query metadata or a `.sqlx` cache.
