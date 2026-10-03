@@ -1,0 +1,40 @@
+/* Layout only. Component appearance comes from Dioxus Components. */
+.page-stack {
+    min-width: 0;
+    min-height: 0;
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1.5rem;
+}
+
+.auth-layout {
+    box-sizing: border-box;
+    display: grid;
+    place-items: center;
+    min-height: 100dvh;
+    padding: 1rem;
+}
+
+.auth-panel {
+    width: 100%;
+    max-width: 24rem;
+}
+
+.form-stack, .field-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.field-stack {
+    gap: 0.5rem;
+}
+
+.profile-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}

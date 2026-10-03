@@ -1,0 +1,22 @@
+/* Global typography and body defaults copied from the official Dioxus Components gallery. */
+/* Typography */
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@400;500;700&display=swap");
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+  overflow-x: clip;
+}
+
+body {
+  padding: 0;
+  margin: 0;
+  background-color: var(--primary-color);
+  color: var(--secondary-color-4);
+  font-family: Geist, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-optical-sizing: auto;
+  font-style: normal;
+  font-weight: 400;
+}
+
