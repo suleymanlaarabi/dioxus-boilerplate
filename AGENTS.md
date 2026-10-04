@@ -35,6 +35,7 @@
 - Never customize fonts, borders, colors, backgrounds, shadows, theme tokens, or component appearance.
 - Keep `assets/dioxus-base.css`, copied from the official gallery, unchanged. Load it alongside the component theme.
 - Application CSS may only arrange layout: position, dimensions, spacing, flex/grid, and overflow.
+- Form buttons keep their intrinsic width. Group related actions in a flex row instead of stretching buttons across the form.
 - Use the official dark theme on every page, including Login and Register, with `data-theme="dark"` on the HTML template.
 - Home is the entry page. The sidebar is on the left, with Home as its only navigation item and an avatar/name profile link at the bottom.
 - Login and Register use a separate authentication layout. Navigation actions outside the sidebar use the official Button Link variant.
@@ -58,6 +59,17 @@
 - Never create migrations or use migration runners, including SQLx migrations.
 - `infra/schema.sql` is the single source of truth for the entire current schema. Edit it directly and use `make reset` when the database must be rebuilt, discarding development data.
 - Keep the Makefile at the repository root. Infrastructure commands remain independent of the app: `make up` starts only Docker Compose services.
+
+# Authentication and files
+
+- Resend uses the existing `RESEND` environment variable. Never print secrets or raw authentication tokens in logs. Set `RESEND_FROM` to an authorized sender; the development sender is limited to the Resend account's own address.
+- `make dev` fixes the Dioxus port with `APP_PORT` (8080 by default) and derives `APP_URL` for email links from the same port. Link construction uses configured `APP_URL`, never request headers.
+- Email verification does not block Home or Profile. Email changes remain pending until confirmed; require the current password for password and email changes.
+- Authentication tokens are hashed, expire, and are consumed once in a transaction. Serialize account changes by locking the user first; revalidate protected sessions after acquiring the lock.
+- Files use the internal `server::files::FileStore` API, a private RustFS bucket, and typed metadata. Never expose storage credentials or raw object keys to the UI.
+- Future domain tables reference `files(id)` with actual foreign keys and `ON DELETE RESTRICT`. Domain modules authorize access; do not add polymorphic ownership fields or assume all files belong to a user.
+- Files are immutable and limited to 25 MiB. Keep uploads inaccessible until complete, stream reads, and retain durable cleanup intents for interrupted uploads and deletions.
+- `make reset` discards both PostgreSQL and RustFS volumes. Restart the application afterwards so its storage bucket is initialized again. No migrations, storage compatibility layers, or generic job framework.
 
 # Quality checks
 

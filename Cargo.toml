@@ -12,18 +12,25 @@ dioxus-icons = { version = "0.1.0", default-features = false }
 dioxus-primitives = { git = "https://github.com/DioxusLabs/components", version = "0.0.1", default-features = false }
 serde = { version = "1", features = ["derive"] }
 argon2 = { version = "0.6", features = ["getrandom"], optional = true }
+aws-sdk-s3 = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio", "rustls"], optional = true }
+bytes = { version = "1", optional = true }
+chrono = { version = "0.4", default-features = false, features = ["clock"], optional = true }
 cookie = { version = "0.18", optional = true }
 dotenvy = { version = "0.15", optional = true }
 email_address = { version = "0.2", default-features = false, optional = true }
 getrandom = { version = "0.4", optional = true }
 hex = { version = "0.4", optional = true }
+mime = { version = "0.3", optional = true }
+resend-rs = { version = "0.32", default-features = false, features = ["rustls-tls"], optional = true }
+thiserror = { version = "2", optional = true }
+url = { version = "2", optional = true }
 sha2 = { version = "0.11", optional = true }
-sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros"], optional = true }
-tokio = { version = "1", features = ["rt-multi-thread"], optional = true }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "chrono"], optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "time"], optional = true }
 
 [features]
 default = ["web"]
 web = ["dioxus/web"]
 desktop = ["dioxus/desktop"]
 mobile = ["dioxus/mobile"]
-server = ["dioxus/server", "dep:argon2", "dep:cookie", "dep:dotenvy", "dep:email_address", "dep:getrandom", "dep:hex", "dep:sha2", "dep:sqlx", "dep:tokio"]
+server = ["dioxus/server", "dep:argon2", "dep:aws-sdk-s3", "dep:bytes", "dep:chrono", "dep:cookie", "dep:dotenvy", "dep:email_address", "dep:getrandom", "dep:hex", "dep:mime", "dep:resend-rs", "dep:sha2", "dep:sqlx", "dep:thiserror", "dep:tokio", "dep:url"]

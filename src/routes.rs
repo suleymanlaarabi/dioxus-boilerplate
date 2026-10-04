@@ -1,7 +1,6 @@
+use crate::layouts::{AppLayout, AuthLayout, PublicAuthLayout};
+use crate::pages::{ForgotPassword, Home, Login, Profile, Register, ResetPassword, VerifyEmail};
 use dioxus::prelude::*;
-
-use crate::layouts::{AppLayout, AuthLayout};
-use crate::pages::{Home, Login, Profile, Register};
 
 #[derive(Debug, Clone, Routable, PartialEq)]
 #[rustfmt::skip]
@@ -17,4 +16,12 @@ pub enum Route {
         Login {},
         #[route("/register")]
         Register {},
+        #[route("/forgot-password")]
+        ForgotPassword {},
+    #[end_layout]
+    #[layout(PublicAuthLayout)]
+        #[route("/reset-password?:token")]
+        ResetPassword { token: Option<String> },
+        #[route("/verify-email?:token")]
+        VerifyEmail { token: Option<String> },
 }

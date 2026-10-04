@@ -6,7 +6,7 @@ mod layouts;
 mod pages;
 mod routes;
 #[cfg(feature = "server")]
-mod server;
+pub mod server;
 mod session;
 mod ui;
 
@@ -16,8 +16,8 @@ fn main() {
     dioxus::logger::initialize_default();
     #[cfg(feature = "server")]
     dioxus::serve(|| async {
-        let database = server::database().await?;
-        Ok(dioxus::server::router(App).layer(dioxus::server::axum::Extension(database)))
+        let services = server::Services::new().await?;
+        Ok(dioxus::server::router(App).layer(dioxus::server::axum::Extension(services)))
     });
 
     #[cfg(not(feature = "server"))]

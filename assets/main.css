@@ -33,6 +33,17 @@
     gap: 0.5rem;
 }
 
+.form-stack > button {
+    align-self: flex-start;
+}
+
+.form-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
 .profile-row {
     display: flex;
     align-items: center;

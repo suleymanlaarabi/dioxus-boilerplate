@@ -3,7 +3,7 @@ use dioxus::prelude::*;
 use crate::components::sidebar::*;
 use crate::routes::Route;
 use crate::session::use_session;
-use crate::ui::UserIdentity;
+use crate::ui::{UserIdentity, VerificationNotice};
 
 #[component]
 fn SidebarMenuButtonLink(to: Route, children: Element) -> Element {
@@ -64,6 +64,7 @@ pub fn AppLayout() -> Element {
             SidebarInset {
                 div { class: "page-stack",
                     header { SidebarTrigger {} }
+                    VerificationNotice {}
                     Outlet::<Route> {}
                 }
             }
@@ -82,8 +83,11 @@ pub fn AuthLayout() -> Element {
     });
 
     rsx! {
-        main { class: "auth-layout",
-            div { class: "auth-panel", Outlet::<Route> {} }
-        }
+        PublicAuthLayout {}
     }
+}
+
+#[component]
+pub fn PublicAuthLayout() -> Element {
+    rsx! { main { class: "auth-layout", div { class: "auth-panel", Outlet::<Route> {} } } }
 }

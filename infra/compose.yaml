@@ -18,5 +18,27 @@ services:
       timeout: 3s
       retries: 30
 
+  rustfs:
+    image: rustfs/rustfs:1.0.1
+    command: ["/data"]
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-boilerplate}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-boilerplate-local-storage-secret}
+      RUSTFS_REGION: ${RUSTFS_REGION:-us-east-1}
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+      RUSTFS_CONSOLE_ENABLE: "true"
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - rustfs_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/health/ready"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
 volumes:
   postgres_data:
+  rustfs_data:

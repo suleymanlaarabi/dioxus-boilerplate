@@ -1,7 +1,7 @@
 COMPOSE = docker compose -f $(CURDIR)/infra/compose.yaml
-PSQL = $(COMPOSE) exec -T postgres psql -U boilerplate -d boilerplate -v ON_ERROR_STOP=1
+APP_PORT ?= 8080
 
-.PHONY: up down reset db fmt lint
+.PHONY: up down reset db dev fmt lint
 
 up:
 	$(COMPOSE) up -d --wait
@@ -9,12 +9,17 @@ up:
 down:
 	$(COMPOSE) down
 
-# Deletes every development record and recreates the current schema atomically.
-reset: up
-	$(PSQL) --single-transaction -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;' -f - < $(CURDIR)/infra/schema.sql
+# Discards development database records and stored files, then recreates the schema.
+reset:
+	$(COMPOSE) down --volumes
+	$(COMPOSE) up -d --wait
 
 db:
 	$(COMPOSE) exec postgres psql -U boilerplate -d boilerplate
+
+# The CLI port and email links use the same development configuration.
+dev:
+	APP_URL=http://localhost:$(APP_PORT) dx serve --port $(APP_PORT)
 
 fmt:
 	cargo fmt --all

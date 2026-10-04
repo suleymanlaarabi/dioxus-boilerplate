@@ -13,7 +13,7 @@ use sqlx::{PgConnection, PgPool};
 use crate::auth::{ProfileData, User};
 
 pub fn internal_error(error: impl std::fmt::Display) -> ServerFnError {
-    dioxus::logger::tracing::error!(%error, "Authentication request failed");
+    dioxus::logger::tracing::error!(%error, "Server request failed");
     HttpError::new(
         StatusCode::INTERNAL_SERVER_ERROR,
         "Something went wrong. Please try again.",
@@ -155,7 +155,7 @@ pub async fn session_user(db: &PgPool, headers: &HeaderMap) -> Result<Option<Use
     };
     sqlx::query_as!(
         User,
-        "SELECT users.id, first_name, last_name, email FROM users
+        "SELECT users.id, first_name, last_name, email, email_verified_at IS NOT NULL AS \"email_verified!\", pending_email FROM users
          JOIN sessions ON sessions.user_id = users.id
          WHERE sessions.token_hash = $1 AND sessions.expires_at > now()",
         token_hash
@@ -170,10 +170,8 @@ pub async fn create_session(
     headers: &HeaderMap,
     user_id: i64,
 ) -> Result<String, ServerFnError> {
-    let mut bytes = [0u8; 32];
-    getrandom::fill(&mut bytes).map_err(internal_error)?;
-    let token = hex::encode(bytes);
-    let token_hash = hex::encode(Sha256::digest(token.as_bytes()));
+    let token = random_token().map_err(internal_error)?;
+    let token_hash = token_hash(&token);
     sqlx::query!(
         "DELETE FROM sessions WHERE expires_at <= now() OR token_hash = $1",
         session_hash(headers)
@@ -206,5 +204,74 @@ pub fn set_session_cookie(token: &str, max_age: u32) -> Result<(), ServerFnError
         dioxus::fullstack::http::header::SET_COOKIE,
         HeaderValue::from_str(&cookie.to_string()).map_err(internal_error)?,
     );
+    Ok(())
+}
+
+pub fn random_token() -> Result<String, getrandom::Error> {
+    let mut bytes = [0u8; 32];
+    getrandom::fill(&mut bytes)?;
+    Ok(hex::encode(bytes))
+}
+
+pub fn token_hash(token: &str) -> String {
+    hex::encode(Sha256::digest(token.as_bytes()))
+}
+
+pub async fn require_user(db: &PgPool, headers: &HeaderMap) -> Result<User, ServerFnError> {
+    check_origin(headers)?;
+    session_user(db, headers)
+        .await?
+        .ok_or_else(|| HttpError::new(StatusCode::UNAUTHORIZED, "Please sign in again.").into())
+}
+
+pub struct Account {
+    pub id: i64,
+    pub first_name: String,
+    pub last_name: String,
+    pub email: String,
+    pub email_verified: bool,
+    pub pending_email: Option<String>,
+    pub password_hash: String,
+}
+
+impl Account {
+    pub fn into_user(self) -> User {
+        User {
+            id: self.id,
+            first_name: self.first_name,
+            last_name: self.last_name,
+            email: self.email,
+            email_verified: self.email_verified,
+            pending_email: self.pending_email,
+        }
+    }
+}
+
+pub async fn locked_account(
+    db: &mut PgConnection,
+    headers: &HeaderMap,
+    user_id: i64,
+) -> Result<Account, ServerFnError> {
+    let account = sqlx::query_as!(Account,
+        "SELECT id, first_name, last_name, email, email_verified_at IS NOT NULL AS \"email_verified!\", pending_email, password_hash
+         FROM users WHERE id = $1 FOR UPDATE", user_id)
+        .fetch_optional(&mut *db).await.map_err(internal_error)?.ok_or_else(||
+            HttpError::new(StatusCode::UNAUTHORIZED, "Please sign in again."))?;
+    let valid = sqlx::query_scalar!(
+        "SELECT EXISTS(SELECT 1 FROM sessions WHERE token_hash = $1 AND user_id = $2 AND expires_at > clock_timestamp()) AS \"valid!\"",
+        session_hash(headers), user_id).fetch_one(db).await.map_err(internal_error)?;
+    if !valid {
+        return Err(HttpError::new(StatusCode::UNAUTHORIZED, "Please sign in again.").into());
+    }
+    Ok(account)
+}
+
+pub async fn check_password(account: &Account, password: String) -> Result<(), ServerFnError> {
+    validate_password_size(&password)?;
+    if !verify_password(password, account.password_hash.clone()).await? {
+        return Err(
+            HttpError::new(StatusCode::BAD_REQUEST, "Current password is incorrect.").into(),
+        );
+    }
     Ok(())
 }
