@@ -1,4 +1,5 @@
 use dioxus::prelude::*;
+use dioxus::CapturedError;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "server")]
@@ -29,22 +30,34 @@ impl User {
     }
 }
 
-pub fn error_message(error: ServerFnError) -> String {
-    match error {
-        ServerFnError::ServerError { message, .. } => message,
+#[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ProfileData {
+    pub first_name: String,
+    pub last_name: String,
+    pub email: String,
+}
+
+impl From<&User> for ProfileData {
+    fn from(user: &User) -> Self {
+        Self {
+            first_name: user.first_name.clone(),
+            last_name: user.last_name.clone(),
+            email: user.email.clone(),
+        }
+    }
+}
+
+pub fn error_message(error: &CapturedError) -> String {
+    match error.downcast_ref::<ServerFnError>() {
+        Some(ServerFnError::ServerError { message, .. }) => message.clone(),
         _ => "Unable to reach the server. Please try again.".to_string(),
     }
 }
 
 #[post("/api/auth/register", db: Extension<sqlx::PgPool>, headers: HeaderMap)]
-pub async fn register(
-    first_name: String,
-    last_name: String,
-    email: String,
-    password: String,
-) -> Result<User, ServerFnError> {
+pub async fn register(profile: ProfileData, password: String) -> Result<User, ServerFnError> {
     check_origin(&headers)?;
-    let (first_name, last_name, email) = profile_fields(first_name, last_name, email)?;
+    let profile = normalize_profile(profile)?;
     validate_password(&password)?;
     let password_hash = hash_password(password).await?;
     let mut transaction = db.begin().await.map_err(internal_error)?;
@@ -52,9 +65,9 @@ pub async fn register(
         User,
         "INSERT INTO users (first_name, last_name, email, password_hash)
          VALUES ($1, $2, $3, $4) RETURNING id, first_name, last_name, email",
-        first_name,
-        last_name,
-        email,
+        profile.first_name,
+        profile.last_name,
+        profile.email,
         password_hash
     )
     .fetch_one(&mut *transaction)
@@ -70,26 +83,27 @@ pub async fn register(
 pub async fn login(email: String, password: String) -> Result<User, ServerFnError> {
     check_origin(&headers)?;
     let email = normalize_email(email)?;
-    validate_password(&password)?;
-    let account = sqlx::query_scalar!("SELECT password_hash FROM users WHERE email = $1", &email)
-        .fetch_optional(&*db)
-        .await
-        .map_err(internal_error)?;
-    let Some(password_hash) = account else {
-        return Err(HttpError::new(StatusCode::UNAUTHORIZED, "Invalid email or password.").into());
-    };
-    if !verify_password(password, password_hash).await? {
-        return Err(HttpError::new(StatusCode::UNAUTHORIZED, "Invalid email or password.").into());
-    }
-    let mut transaction = db.begin().await.map_err(internal_error)?;
-    let user = sqlx::query_as!(
-        User,
-        "SELECT id, first_name, last_name, email FROM users WHERE email = $1",
+    validate_password_size(&password)?;
+    let account = sqlx::query!(
+        "SELECT id, first_name, last_name, email, password_hash FROM users WHERE email = $1",
         email
     )
-    .fetch_one(&mut *transaction)
+    .fetch_optional(&*db)
     .await
     .map_err(internal_error)?;
+    let Some(account) = account else {
+        return Err(HttpError::new(StatusCode::UNAUTHORIZED, "Invalid email or password.").into());
+    };
+    if !verify_password(password, account.password_hash).await? {
+        return Err(HttpError::new(StatusCode::UNAUTHORIZED, "Invalid email or password.").into());
+    }
+    let user = User {
+        id: account.id,
+        first_name: account.first_name,
+        last_name: account.last_name,
+        email: account.email,
+    };
+    let mut transaction = db.begin().await.map_err(internal_error)?;
     let token = create_session(&mut transaction, &headers, user.id).await?;
     transaction.commit().await.map_err(internal_error)?;
     set_session_cookie(&token, 7 * 24 * 60 * 60)?;
@@ -121,23 +135,19 @@ pub async fn logout() -> Result<(), ServerFnError> {
 }
 
 #[post("/api/profile", db: Extension<sqlx::PgPool>, headers: HeaderMap)]
-pub async fn update_profile(
-    first_name: String,
-    last_name: String,
-    email: String,
-) -> Result<User, ServerFnError> {
+pub async fn update_profile(profile: ProfileData) -> Result<User, ServerFnError> {
     check_origin(&headers)?;
     let user = session_user(&db, &headers)
         .await?
         .ok_or_else(|| HttpError::new(StatusCode::UNAUTHORIZED, "Please sign in again."))?;
-    let (first_name, last_name, email) = profile_fields(first_name, last_name, email)?;
+    let profile = normalize_profile(profile)?;
     sqlx::query_as!(
         User,
         "UPDATE users SET first_name = $1, last_name = $2, email = $3 WHERE id = $4
          RETURNING id, first_name, last_name, email",
-        first_name,
-        last_name,
-        email,
+        profile.first_name,
+        profile.last_name,
+        profile.email,
         user.id
     )
     .fetch_one(&*db)

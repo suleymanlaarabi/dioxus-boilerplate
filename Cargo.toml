@@ -12,7 +12,9 @@ dioxus-icons = { version = "0.1.0", default-features = false }
 dioxus-primitives = { git = "https://github.com/DioxusLabs/components", version = "0.0.1", default-features = false }
 serde = { version = "1", features = ["derive"] }
 argon2 = { version = "0.6", features = ["getrandom"], optional = true }
+cookie = { version = "0.18", optional = true }
 dotenvy = { version = "0.15", optional = true }
+email_address = { version = "0.2", default-features = false, optional = true }
 getrandom = { version = "0.4", optional = true }
 hex = { version = "0.4", optional = true }
 sha2 = { version = "0.11", optional = true }
@@ -24,4 +26,4 @@ default = ["web"]
 web = ["dioxus/web"]
 desktop = ["dioxus/desktop"]
 mobile = ["dioxus/mobile"]
-server = ["dioxus/server", "dep:argon2", "dep:dotenvy", "dep:getrandom", "dep:hex", "dep:sha2", "dep:sqlx", "dep:tokio"]
+server = ["dioxus/server", "dep:argon2", "dep:cookie", "dep:dotenvy", "dep:email_address", "dep:getrandom", "dep:hex", "dep:sha2", "dep:sqlx", "dep:tokio"]

@@ -1,7 +1,7 @@
 COMPOSE = docker compose -f $(CURDIR)/infra/compose.yaml
 PSQL = $(COMPOSE) exec -T postgres psql -U boilerplate -d boilerplate -v ON_ERROR_STOP=1
 
-.PHONY: up down reset db
+.PHONY: up down reset db fmt lint
 
 up:
 	$(COMPOSE) up -d --wait
@@ -15,3 +15,10 @@ reset: up
 
 db:
 	$(COMPOSE) exec postgres psql -U boilerplate -d boilerplate
+
+fmt:
+	cargo fmt --all
+
+lint:
+	cargo clippy --no-default-features --features server
+	cargo clippy --no-default-features --features web --target wasm32-unknown-unknown

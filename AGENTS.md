@@ -1,191 +1,67 @@
-You are an expert [0.7 Dioxus](https://dioxuslabs.com/learn/0.7) assistant. Dioxus 0.7 changes every api in dioxus. Only use this up to date documentation. `cx`, `Scope`, and `use_state` are gone
+# Project conventions
 
-Provide concise code examples with detailed descriptions
+- Keep code simple, concise, readable, and consistent with existing patterns.
+- All code, comments, documentation, UI text, labels, and errors must be in English.
+- Inspect nearby code and existing components, helpers, and hooks before adding new ones.
+- Prefer the smallest change that fully solves the current requirement. Remove superseded code.
 
-The code and comments and text, label etc... are always in English !
+# Structure and reuse
 
+- Keep routes, layouts, pages, shared UI, and server code separate.
+- `src/components` contains the official Dioxus Components. Keep their supplied implementations and styles unchanged.
+- `src/ui` contains application compositions of those components. Pages coordinate their data and user actions.
+- Extract a component, hook, or helper when a real repeated behavior or distinct responsibility appears. Use a precise name and a small interface.
+- Keep short, straightforward RSX fragments inline. Do not create generic form frameworks, repository abstractions, or service layers without a concrete need.
+- Add a feature module when related operations actually share domain models and rules. Do not reorganize the whole app in anticipation of future features.
+- Use an ecosystem library when it replaces a technical responsibility such as cookie parsing or email validation. Avoid competing libraries for the same task and unnecessary dependencies.
 
-# UI with RSX
+# Dioxus 0.7
 
-```rust
-rsx! {
-	div {
-		class: "container", // Attribute
-		color: "red", // Inline styles
-		width: if condition { "100%" }, // Conditional attributes
-		"Hello, Dioxus!"
-	}
-	// Prefer loops over iterators
-	for i in 0..5 {
-		div { "{i}" } // use elements or components directly in loops
-	}
-	if condition {
-		div { "Condition is true!" } // use elements or components directly in conditionals
-	}
+- Use [Dioxus 0.7 documentation](https://dioxuslabs.com/learn/0.7) and APIs supported by the installed version. Never use `cx`, `Scope`, or `use_state`.
+- Components use `#[component]` with owned, `Clone + PartialEq` props. Use reactive props when their values need to change.
+- Keep hooks in a stable order. Do not call them in branches or loops, or after conditional early returns. Use a child component when it requires data that may be absent.
+- Keep state local unless multiple parts of the app actually share it. Access the named session context through `use_session`.
+- Derive values directly from state. Use `use_memo` for useful reactive computations, not as a default wrapper around simple expressions.
+- Use `use_action` for async user actions. Read its pending state and result instead of maintaining duplicate busy, error, and success signals.
+- Use `use_server_future` for initial server-rendered data that must hydrate consistently. Use `use_resource` for reactive client-side loading when appropriate.
+- Use effects for side effects such as navigation and browser-only APIs after hydration. Do not use them to copy derived state between signals.
+- Never hold a signal read or write guard across an `await`. Snapshot inputs before starting async work.
+- Keep server and initial client rendering identical. Use suspense and error boundaries for loading and failed initial requests; do not convert request failures into anonymous sessions.
+- Prefer direct RSX loops and conditionals over iterator-built markup.
 
-	{children} // Expressions are wrapped in brace
-	{(0..5).map(|i| rsx! { span { "Item {i}" } })} // Iterators must be wrapped in braces
-}
-```
+# Design system
 
-# Components
+- Always use the [official Dioxus Components](https://dioxuslabs.com/components), preserving their default styles and supplied theme.
+- Never customize fonts, borders, colors, backgrounds, shadows, theme tokens, or component appearance.
+- Keep `assets/dioxus-base.css`, copied from the official gallery, unchanged. Load it alongside the component theme.
+- Application CSS may only arrange layout: position, dimensions, spacing, flex/grid, and overflow.
+- Use the official dark theme on every page, including Login and Register, with `data-theme="dark"` on the HTML template.
+- Home is the entry page. The sidebar is on the left, with Home as its only navigation item and an avatar/name profile link at the bottom.
+- Login and Register use a separate authentication layout. Navigation actions outside the sidebar use the official Button Link variant.
 
-Components are the building blocks of apps
+# API and type safety
 
-* Component are functions annotated with the `#[component]` macro.
-* The function name must start with a capital letter or contain an underscore.
-* A component re-renders only under two conditions:
-	1.  Its props change (as determined by `PartialEq`).
-	2.  An internal reactive state it depends on is updated.
+- Use Dioxus 0.7 `#[get]` / `#[post]` server functions. Database and authentication dependencies belong only to the server feature.
+- Use explicit structs and enums for meaningful domain concepts and shared API data. Do not add wrappers around every primitive without a concrete invariant or misuse to prevent.
+- Avoid untyped JSON, unnecessary casts, and `unwrap` / `expect` for normal runtime states.
+- Validate untrusted inputs at server boundaries. Use database constraints for persistent invariants; avoid redundant existence or uniqueness queries.
+- Authenticate protected endpoints on the server. UI route guards are only for navigation.
+- Keep password hashing off async request threads. Preserve transactions, session checks, and request-origin protection when refactoring.
+- Handle unauthorized responses from protected actions through the session helper. Keep technical error details in server logs and show controlled messages in the UI.
+- All application SQL uses compile-time checked SQLx `query!`, `query_as!`, `query_scalar!`, or their file variants. Never use unchecked macros or runtime-only query APIs, or bypass type/nullability checks.
+- SQLx checks queries directly against running PostgreSQL during server compilation using `DATABASE_URL` from `.env`. Do not use offline metadata or a `.sqlx` cache.
 
-```rust
-#[component]
-fn Input(mut value: Signal<String>) -> Element {
-	rsx! {
-		input {
-            value,
-			oninput: move |e| {
-				*value.write() = e.value();
-			},
-			onkeydown: move |e| {
-				if e.key() == Key::Enter {
-					value.write().clear();
-				}
-			},
-		}
-	}
-}
-```
+# Development database
 
-Each component accepts function arguments (props)
-
-* Props must be owned values, not references. Use `String` and `Vec<T>` instead of `&str` or `&[T]`.
-* Props must implement `PartialEq` and `Clone`.
-* To make props reactive and copy, you can wrap the type in `ReadOnlySignal`. Any reactive state like memos and resources that read `ReadOnlySignal` props will automatically re-run when the prop changes.
-
-# State
-
-A signal is a wrapper around a value that automatically tracks where it's read and written. Changing a signal's value causes code that relies on the signal to rerun.
-
-## Local State
-
-The `use_signal` hook creates state that is local to a single component. You can call the signal like a function (e.g. `my_signal()`) to clone the value, or use `.read()` to get a reference. `.write()` gets a mutable reference to the value.
-
-Use `use_memo` to create a memoized value that recalculates when its dependencies change. Memos are useful for expensive calculations that you don't want to repeat unnecessarily.
-
-```rust
-#[component]
-fn Counter() -> Element {
-	let mut count = use_signal(|| 0);
-	let mut doubled = use_memo(move || count() * 2); // doubled will re-run when count changes because it reads the signal
-
-	rsx! {
-		h1 { "Count: {count}" } // Counter will re-render when count changes because it reads the signal
-		h2 { "Doubled: {doubled}" }
-		button {
-			onclick: move |_| *count.write() += 1, // Writing to the signal rerenders Counter
-			"Increment"
-		}
-		button {
-			onclick: move |_| count.with_mut(|count| *count += 1), // use with_mut to mutate the signal
-			"Increment with with_mut"
-		}
-	}
-}
-```
-
-## Context API
-
-The Context API allows you to share state down the component tree. A parent provides the state using `use_context_provider`, and any child can access it with `use_context`
-
-```rust
-#[component]
-fn App() -> Element {
-	let mut theme = use_signal(|| "light".to_string());
-	use_context_provider(|| theme); // Provide a type to children
-	rsx! { Child {} }
-}
-
-#[component]
-fn Child() -> Element {
-	let theme = use_context::<Signal<String>>(); // Consume the same type
-	rsx! {
-		div {
-			"Current theme: {theme}"
-		}
-	}
-}
-```
-
-# Async
-
-For state that depends on an asynchronous operation (like a network request), Dioxus provides a hook called `use_resource`. This hook manages the lifecycle of the async task and provides the result to your component.
-
-* The `use_resource` hook takes an `async` closure. It re-runs this closure whenever any signals it depends on (reads) are updated
-* The `Resource` object returned can be in several states when read:
-1. `None` if the resource is still loading
-2. `Some(value)` if the resource has successfully loaded
-
-```rust
-let mut dog = use_resource(move || async move {
-	// api request
-});
-
-match dog() {
-	Some(dog_info) => rsx! { Dog { dog_info } },
-	None => rsx! { "Loading..." },
-}
-```
-
-## Server Functions
-
-Use the `#[post]` / `#[get]` macros to define an `async` function that will only run on the server. On the server, this macro generates an API endpoint. On the client, it generates a function that makes an HTTP request to that endpoint.
-
-```rust
-#[post("/api/double/:path/&query")]
-async fn double_server(number: i32, path: String, query: i32) -> Result<i32, ServerFnError> {
-	tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-	Ok(number * 2)
-}
-```
-
-## Hydration
-
-Hydration is the process of making a server-rendered HTML page interactive on the client. The server sends the initial HTML, and then the client-side runs, attaches event listeners, and takes control of future rendering.
-
-### Errors
-The initial UI rendered by the component on the client must be identical to the UI rendered on the server.
-
-* Use the `use_server_future` hook instead of `use_resource`. It runs the future on the server, serializes the result, and sends it to the client, ensuring the client has the data immediately for its first render.
-* Any code that relies on browser-specific APIs (like accessing `localStorage`) must be run *after* hydration. Place this code inside a `use_effect` hook.
-
-# SaaS structure and design system
-
-- Keep application code simple, concise, and readable. Separate routes, layouts, pages, and shared components.
-- Always use the official Dioxus Components: https://dioxuslabs.com/components.
-- Preserve their default styles and the supplied theme. Never customize fonts, borders, colors, backgrounds, shadows, or component appearance.
-- Load the official gallery global typography/body defaults from `assets/dioxus-base.css` alongside the component theme. These are design system defaults, not app customization. Keep them unchanged.
-- Application CSS may only arrange the layout (position, dimensions, spacing, flex/grid). Do not override component styles or theme tokens.
-- The application opens on Home. Its sidebar is on the left, with Home as its only navigation item and a clickable avatar/name profile card at the bottom.
-- Login and Register use a separate authentication layout.
-- Use the official dark theme on every page, including Login and Register. Set `data-theme="dark"` on the HTML template; do not redefine theme colors.
-- Navigation actions outside the sidebar use the official Button Link variant, never an unstyled browser link.
-
-# Development database and compatibility
-
-- This application is not in production. There is no real or historical data to preserve.
+- The app is not in production. There is no real or historical data to preserve.
 - Never keep legacy code, compatibility shims, old schema support, or fallback implementations.
-- Never create database migrations or use a migration runner, including SQLx migrations.
-- `infra/schema.sql` is the single source of truth for creating the entire current schema.
-- Edit that schema directly. When a schema change requires rebuilding the database, use `make reset` and discard all development data.
-- Keep the project Makefile at the repository root. It may contain commands for the project in general.
-- Keep infrastructure commands independent from the app. `make up` starts only Docker Compose services, never the backend or frontend.
-- Use Dioxus 0.7 server functions for the API and SQLx only on the server. Authenticate protected endpoints on the server, not only in the UI.
+- Never create migrations or use migration runners, including SQLx migrations.
+- `infra/schema.sql` is the single source of truth for the entire current schema. Edit it directly and use `make reset` when the database must be rebuilt, discarding development data.
+- Keep the Makefile at the repository root. Infrastructure commands remain independent of the app: `make up` starts only Docker Compose services.
 
-# Type safety
+# Quality checks
 
-- Always aim for the strongest practical type safety throughout the application, including database access, API payloads, state, and domain models.
-- All application SQL queries must use SQLx's compile-time checked macros: `query!`, `query_as!`, or `query_scalar!` (and their file variants).
-- Never use unchecked macros or runtime-only `sqlx::query`, `query_as`, or `query_scalar` for application queries. Do not bypass parameter, column type, or nullability checks.
-- Use explicit structs and enums for meaningful domain concepts. Avoid stringly typed data, untyped JSON, and unnecessary casts or unwraps.
-- Check SQLx queries directly against the running PostgreSQL database during compilation using `DATABASE_URL` from `.env`. Do not use offline query metadata or a `.sqlx` cache.
+- Use `make fmt` for formatting and `make lint` for Clippy on the server and WebAssembly client. PostgreSQL must be running for server-side SQLx checks.
+- Resolve warnings in application code. Do not modify official components or globally suppress warnings just to make lint output clean.
+- Do not add or run tests, separate builds, or manual verification campaigns unless the user requests them.
+- When reporting work, state what changed, which checks ran, and any remaining limitations. Do not claim linting proves runtime behavior.

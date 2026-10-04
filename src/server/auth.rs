@@ -2,16 +2,18 @@ use argon2::{
     password_hash::{phc::PasswordHash, PasswordHasher, PasswordVerifier},
     Argon2,
 };
+use cookie::{Cookie, SameSite};
 use dioxus::fullstack::{
     FullstackContext, HeaderMap, HeaderValue, HttpError, ServerFnError, StatusCode,
 };
+use email_address::{EmailAddress, Options};
 use sha2::{Digest, Sha256};
 use sqlx::{PgConnection, PgPool};
 
-use crate::auth::User;
+use crate::auth::{ProfileData, User};
 
 pub fn internal_error(error: impl std::fmt::Display) -> ServerFnError {
-    eprintln!("Authentication error: {error}");
+    dioxus::logger::tracing::error!(%error, "Authentication request failed");
     HttpError::new(
         StatusCode::INTERNAL_SERVER_ERROR,
         "Something went wrong. Please try again.",
@@ -36,27 +38,21 @@ pub fn account_error(error: sqlx::Error) -> ServerFnError {
 
 pub fn normalize_email(email: String) -> Result<String, ServerFnError> {
     let email = email.trim().to_lowercase();
-    let valid = email.split_once('@').is_some_and(|(name, domain)| {
-        !name.is_empty()
-            && domain.contains('.')
-            && !domain.starts_with('.')
-            && !domain.ends_with('.')
-            && !domain.contains('@')
-    });
+    let options = Options::default()
+        .without_display_text()
+        .without_domain_literal()
+        .with_required_tld();
+    let valid = EmailAddress::parse_with_options(&email, options).is_ok();
     if !valid || email.len() > 254 || email.chars().any(char::is_whitespace) {
         return Err(HttpError::new(StatusCode::BAD_REQUEST, "Enter a valid email address.").into());
     }
     Ok(email)
 }
 
-pub fn profile_fields(
-    first_name: String,
-    last_name: String,
-    email: String,
-) -> Result<(String, String, String), ServerFnError> {
-    let first_name = first_name.trim().to_string();
-    let last_name = last_name.trim().to_string();
-    if [&first_name, &last_name]
+pub fn normalize_profile(mut profile: ProfileData) -> Result<ProfileData, ServerFnError> {
+    profile.first_name = profile.first_name.trim().to_string();
+    profile.last_name = profile.last_name.trim().to_string();
+    if [&profile.first_name, &profile.last_name]
         .iter()
         .any(|name| !(1..=100).contains(&name.chars().count()))
     {
@@ -66,14 +62,27 @@ pub fn profile_fields(
         )
         .into());
     }
-    Ok((first_name, last_name, normalize_email(email)?))
+    profile.email = normalize_email(profile.email)?;
+    Ok(profile)
 }
 
 pub fn validate_password(password: &str) -> Result<(), ServerFnError> {
-    if password.chars().count() < 8 || password.len() > 1024 {
+    validate_password_size(password)?;
+    if password.chars().count() < 8 {
         return Err(HttpError::new(
             StatusCode::BAD_REQUEST,
-            "Use at least 8 characters and at most 1024 bytes for your password.",
+            "Use at least 8 characters for your password.",
+        )
+        .into());
+    }
+    Ok(())
+}
+
+pub fn validate_password_size(password: &str) -> Result<(), ServerFnError> {
+    if password.len() > 1024 {
+        return Err(HttpError::new(
+            StatusCode::BAD_REQUEST,
+            "Use at most 1024 bytes for your password.",
         )
         .into());
     }
@@ -95,9 +104,11 @@ pub async fn hash_password(password: String) -> Result<String, ServerFnError> {
 pub async fn verify_password(password: String, hash: String) -> Result<bool, ServerFnError> {
     tokio::task::spawn_blocking(move || {
         let hash = PasswordHash::new(&hash).map_err(internal_error)?;
-        Ok(Argon2::default()
-            .verify_password(password.as_bytes(), &hash)
-            .is_ok())
+        match Argon2::default().verify_password(password.as_bytes(), &hash) {
+            Ok(()) => Ok(true),
+            Err(argon2::password_hash::Error::PasswordInvalid) => Ok(false),
+            Err(error) => Err(internal_error(error)),
+        }
     })
     .await
     .map_err(internal_error)?
@@ -124,10 +135,14 @@ pub fn check_origin(headers: &HeaderMap) -> Result<(), ServerFnError> {
 }
 
 pub fn session_hash(headers: &HeaderMap) -> Option<String> {
-    let cookie = headers.get("cookie")?.to_str().ok()?;
-    let token = cookie
-        .split(';')
-        .find_map(|part| part.trim().strip_prefix("session="))?;
+    let cookie = headers
+        .get_all(dioxus::fullstack::http::header::COOKIE)
+        .iter()
+        .filter_map(|header| header.to_str().ok())
+        .flat_map(Cookie::split_parse)
+        .filter_map(Result::ok)
+        .find(|cookie| cookie.name() == "session")?;
+    let token = cookie.value();
     if token.len() != 64 || !token.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return None;
     }
@@ -178,18 +193,18 @@ pub async fn create_session(
 }
 
 pub fn set_session_cookie(token: &str, max_age: u32) -> Result<(), ServerFnError> {
-    let secure = if std::env::var("SESSION_COOKIE_SECURE").as_deref() == Ok("false") {
-        ""
-    } else {
-        "; Secure"
-    };
-    let cookie =
-        format!("session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}{secure}");
+    let cookie = Cookie::build(("session", token.to_owned()))
+        .path("/")
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .secure(std::env::var("SESSION_COOKIE_SECURE").as_deref() != Ok("false"))
+        .max_age(cookie::time::Duration::seconds(i64::from(max_age)))
+        .build();
     let context =
         FullstackContext::current().ok_or_else(|| internal_error("Missing request context"))?;
     context.add_response_header(
         dioxus::fullstack::http::header::SET_COOKIE,
-        HeaderValue::from_str(&cookie).map_err(internal_error)?,
+        HeaderValue::from_str(&cookie.to_string()).map_err(internal_error)?,
     );
     Ok(())
 }

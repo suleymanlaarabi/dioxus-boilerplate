@@ -1,25 +1,23 @@
 use dioxus::prelude::*;
 
-use crate::auth::User;
-use crate::components::avatar::{Avatar, AvatarFallback};
 use crate::components::sidebar::*;
 use crate::routes::Route;
+use crate::session::use_session;
+use crate::ui::UserIdentity;
 
 #[component]
 pub fn AppLayout() -> Element {
     let route = use_route::<Route>();
-    let session = use_context::<Signal<Option<User>>>();
+    let session = use_session();
     let navigator = use_navigator();
     use_effect(move || {
-        if session().is_none() {
+        if session.user().is_none() {
             navigator.replace(Route::Login {});
         }
     });
-    let Some(user) = session() else {
+    let Some(user) = session.user() else {
         return rsx! { main { class: "auth-layout", "Redirecting to sign in..." } };
     };
-    let name = user.full_name();
-    let initials = user.initials();
 
     rsx! {
         SidebarProvider {
@@ -46,8 +44,7 @@ pub fn AppLayout() -> Element {
                                 is_active: route == Route::Profile {},
                                 as: move |attributes: Vec<Attribute>| rsx! {
                                     Link { to: Route::Profile {}, attributes: attributes,
-                                        Avatar { AvatarFallback { "{initials}" } }
-                                        span { "{name}" }
+                                        UserIdentity { user: user.clone() }
                                     }
                                 },
                             }
@@ -67,10 +64,10 @@ pub fn AppLayout() -> Element {
 
 #[component]
 pub fn AuthLayout() -> Element {
-    let session = use_context::<Signal<Option<User>>>();
+    let session = use_session();
     let navigator = use_navigator();
     use_effect(move || {
-        if session().is_some() {
+        if session.user().is_some() {
             navigator.replace(Route::Home {});
         }
     });
