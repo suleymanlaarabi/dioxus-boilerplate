@@ -6,8 +6,24 @@ use crate::session::use_session;
 use crate::ui::UserIdentity;
 
 #[component]
-pub fn AppLayout() -> Element {
+fn SidebarMenuButtonLink(to: Route, children: Element) -> Element {
     let route = use_route::<Route>();
+
+    rsx! {
+        SidebarMenuButton {
+            size: SidebarMenuButtonSize::Lg,
+            is_active: to == route,
+            as: move |attributes: Vec<Attribute>| rsx! {
+                Link { to: to.clone(), attributes: attributes,
+                    {children.clone()}
+                }
+            },
+        }
+    }
+}
+
+#[component]
+pub fn AppLayout() -> Element {
     let session = use_session();
     let navigator = use_navigator();
     use_effect(move || {
@@ -26,11 +42,9 @@ pub fn AppLayout() -> Element {
                     SidebarGroup {
                         SidebarMenu {
                             SidebarMenuItem {
-                                SidebarMenuButton {
-                                    is_active: route == Route::Home {},
-                                    as: move |attributes: Vec<Attribute>| rsx! {
-                                        Link { to: Route::Home {}, attributes: attributes, "Home" }
-                                    },
+                                SidebarMenuButtonLink {
+                                    to: Route::Home {},
+                                    "Home"
                                 }
                             }
                         }
@@ -39,14 +53,9 @@ pub fn AppLayout() -> Element {
                 SidebarFooter {
                     SidebarMenu {
                         SidebarMenuItem {
-                            SidebarMenuButton {
-                                size: SidebarMenuButtonSize::Lg,
-                                is_active: route == Route::Profile {},
-                                as: move |attributes: Vec<Attribute>| rsx! {
-                                    Link { to: Route::Profile {}, attributes: attributes,
-                                        UserIdentity { user: user.clone() }
-                                    }
-                                },
+                            SidebarMenuButtonLink {
+                                to: Route::Profile {},
+                                UserIdentity { user: user.clone() }
                             }
                         }
                     }
